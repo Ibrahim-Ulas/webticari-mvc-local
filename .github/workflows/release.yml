@@ -1,0 +1,42 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Clone MVC submodule
+        run: |
+          git submodule sync --recursive
+          git -c url."https://x-access-token:${{ secrets.GH_PAT }}@github.com/".insteadOf="git@github.com:" \
+            -c url."https://x-access-token:${{ secrets.GH_PAT }}@github.com/".insteadOf="https://github.com/" \
+            submodule update --init --recursive --depth=1
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          make_latest: true
+
+  build-and-push:
+    needs: release
+    uses: ./.github/workflows/build-docker.yml
+    with:
+      image_tag: ${{ github.ref_name }}
+    secrets: inherit

@@ -1,0 +1,149 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Docker image tag'
+        required: false
+        default: 'latest'
+  workflow_call:
+    inputs:
+      image_tag:
+        description: 'Docker image tag'
+        required: false
+        type: string
+        default: 'latest'
+    secrets:
+      GH_PAT:
+        required: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_PHP: webticari-yazilim/webticari-mvc-local-php
+  IMAGE_NAME_NGINX: webticari-yazilim/webticari-mvc-local-nginx
+  IMAGE_NAME_WS: webticari-yazilim/webticari-mvc-local-ws
+
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-php:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Clone MVC submodule
+        run: |
+          git submodule sync --recursive
+          git -c url."https://x-access-token:${{ secrets.GH_PAT }}@github.com/".insteadOf="git@github.com:" \
+            -c url."https://x-access-token:${{ secrets.GH_PAT }}@github.com/".insteadOf="https://github.com/" \
+            submodule update --init --recursive --depth=1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata for PHP image
+        id: meta-php
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_PHP }}
+          tags: |
+            type=raw,value=${{ github.event.inputs.image_tag || 'latest' }}
+            type=sha,prefix=
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+      - name: Build and push PHP image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.php
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-php.outputs.tags }}
+          labels: ${{ steps.meta-php.outputs.labels }}
+          build-args: APP_ENV=production
+
+  build-nginx:
+    runs-on: ubuntu-latest
+    needs: build-php
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata for nginx image
+        id: meta-nginx
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_NGINX }}
+          tags: |
+            type=raw,value=${{ github.event.inputs.image_tag || 'latest' }}
+            type=sha,prefix=
+            type=ref,event=branch
+      - name: Build and push nginx image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.nginx
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-nginx.outputs.tags }}
+          labels: ${{ steps.meta-nginx.outputs.labels }}
+
+  build-websocket:
+    runs-on: ubuntu-latest
+    needs: build-php
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata for WebSocket image
+        id: meta-ws
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_WS }}
+          tags: |
+            type=raw,value=${{ github.event.inputs.image_tag || 'latest' }}
+            type=sha,prefix=
+            type=ref,event=branch
+      - name: Build and push WebSocket image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.websocket
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-ws.outputs.tags }}
+          labels: ${{ steps.meta-ws.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_PHP }}:${{ github.event.inputs.image_tag || 'latest' }}

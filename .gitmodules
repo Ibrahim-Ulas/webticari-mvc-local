@@ -1,0 +1,12 @@
+[submodule "src"]
+	path = src
+	url = git@github.com:Webticari-Yazilim/webticari-mvc-local-exe-src.git
+	branch = main
+[submodule "docker"]
+	path = docker
+	url = git@github.com:Webticari-Yazilim/webticari-mvc-local-docker-src.git
+	branch = main
+[submodule "webticari-mvc"]
+	path = webticari-mvc
+	url = git@github.com:Webticari-Yazilim/Webticari-MVC.git
+	branch = prod
