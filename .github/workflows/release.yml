@@ -72,6 +72,9 @@ jobs:
 
   build-and-push:
     needs: release
+    permissions:
+      packages: write
+      contents: read
     uses: ./.github/workflows/build-docker.yml
     with:
       image_tag: ${{ github.ref_name }}
